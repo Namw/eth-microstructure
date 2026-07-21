@@ -1,6 +1,8 @@
 import argparse
 import asyncio
 import json
+import threading
+import webbrowser
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("--streams", default="trades,orderbook")
     replay.add_argument("--speed", type=float, default=0)
     replay.add_argument("--data-dir", type=Path, default=Path("data"))
+
+    web = subparsers.add_parser("web", help="open the local browser console")
+    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--port", type=int, default=8765)
+    web.add_argument("--no-open", action="store_true")
     return parser
 
 
@@ -114,6 +121,14 @@ def cli_main(argv: list[str] | None = None) -> int:
                 asyncio.run(play_events(events, args.speed, _emit_event))
             except KeyboardInterrupt:
                 print("Replay stopped")
+            return 0
+        if args.command == "web":
+            import uvicorn
+
+            url = f"http://{args.host}:{args.port}"
+            if not args.no_open:
+                threading.Timer(0.8, webbrowser.open, args=(url,)).start()
+            uvicorn.run("eth_microstructure.web.app:app", host=args.host, port=args.port)
             return 0
     except (FileNotFoundError, ValueError) as exc:
         parser.error(str(exc))

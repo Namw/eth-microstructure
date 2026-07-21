@@ -5,7 +5,7 @@ from eth_microstructure.storage import HourlyParquetWriter
 
 class OrderBookCollector(BaseCollector):
     def __init__(self, symbol: str, writer: HourlyParquetWriter) -> None:
-        super().__init__(symbol, "depth20@100ms")
+        super().__init__(symbol, "depth20@100ms", route="public")
         self.writer = writer
         latest_timestamp = writer.max_value()
         self._last_second = latest_timestamp // 1000 if latest_timestamp is not None else None

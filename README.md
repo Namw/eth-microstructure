@@ -7,6 +7,8 @@ Detector、策略、回测、数据库、预测或 GUI。
 ## 数据可靠性
 
 - WebSocket 断线后指数退避自动重连。
+- 使用 Binance 2026 路由：Trade 连接 `/market/ws`，OrderBook 连接 `/public/ws`；
+  连接后 30 秒无任何消息会告警并主动重连，避免静默失效。
 - Trade 根据 `aggregate_trade_id` 检测缺口，并调用 Binance Futures `aggTrades`
   REST 接口补齐后再写入实时成交。
 - 每条记录先追加到 WAL；默认每条 `fsync`。小时结束后通过临时文件和原子重命名生成
@@ -36,6 +38,17 @@ uv sync
 ```bash
 uv run eth-microstructure collect
 ```
+
+## 本地网页控制台
+
+```bash
+uv run eth-microstructure web
+```
+
+浏览器会自动打开 `http://127.0.0.1:8765`。页面可以启动/停止采集、查看 WAL 和最近文件、
+读取小时 Parquet、执行日期质量验证，以及按速度流式 Replay。网页只监听本机地址，直接读取
+当前项目的 `data/`，不会上传研究数据。关闭网页服务前如果采集仍在运行，服务会先正常停止
+Collector 并将当前 WAL 落盘。
 
 用 `Ctrl-C` 正常退出。输出结构为：
 
@@ -100,8 +113,10 @@ uv run eth-microstructure replay \
 `orderbook`。实现按小时读取，在每个小时内合并并确定性排序，不会一次加载完整日期。
 `Ctrl-C` 可正常停止。`UnifiedEvent`/`stream_events` 是与 Collector 解耦的统一消费接口。
 
-限制：Replay v1 只输出终端文本；Validate 不修复数据；日期检查要求 Trade 和 OrderBook
-两类数据均存在，但不会假定一天必须有 24 个小时文件，也不会通过 Manifest 推断缺失小时。
+CLI Replay 仍输出终端文本；网页 Replay 会重建盘口状态，并联动展示成交轨迹、最近成交、
+盘口失衡、事件解释和可单步检查的时间轴。Validate 不修复数据；日期检查要求 Trade 和
+OrderBook 两类数据均存在，但不会假定一天必须有 24 个小时文件，也不会通过 Manifest
+推断缺失小时。
 
 ## 验证与开发
 

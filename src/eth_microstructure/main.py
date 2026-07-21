@@ -1,4 +1,6 @@
 import asyncio
+import fcntl
+import os
 import signal
 import sys
 from datetime import UTC, datetime
@@ -111,7 +113,20 @@ def run_collector(config_path: Path = Path("config/config.yaml")) -> None:
     logger.add(sys.stderr, level="INFO", enqueue=True)
     Path("logs").mkdir(exist_ok=True)
     logger.add("logs/collector.log", rotation="1 hour", retention="7 days", enqueue=True)
-    asyncio.run(async_main(config_path))
+    with Path("logs/collector.lock").open("a+") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            logger.error("Another Collector is already running for this project")
+            raise SystemExit(2) from None
+        lock_file.seek(0)
+        lock_file.truncate()
+        lock_file.write(str(os.getpid()))
+        lock_file.flush()
+        try:
+            asyncio.run(async_main(config_path))
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 if __name__ == "__main__":

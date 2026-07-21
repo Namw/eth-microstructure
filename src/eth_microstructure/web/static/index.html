@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ETH Microstructure Console</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">BINANCE USD-M FUTURES · LOCAL RESEARCH CONSOLE</p>
+      <h1>ETH Microstructure</h1>
+    </div>
+    <div class="status-cluster">
+      <span id="statusDot" class="status-dot"></span>
+      <span id="statusText">正在读取状态</span>
+      <button id="startButton" class="button primary">开始采集</button>
+      <button id="restartButton" class="button">重启采集</button>
+      <button id="stopButton" class="button danger">停止并落盘</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="metrics" aria-label="数据概况">
+      <article><span>PARQUET FILES</span><strong id="parquetFiles">—</strong></article>
+      <article><span>TRADE HOURS</span><strong id="tradeFiles">—</strong></article>
+      <article><span>BOOK HOURS</span><strong id="bookFiles">—</strong></article>
+      <article><span>ACTIVE WAL</span><strong id="walBytes">—</strong></article>
+    </section>
+
+    <nav class="tabs" aria-label="功能导航">
+      <button class="tab active" data-panel="overview">运行概览</button>
+      <button class="tab" data-panel="inspect">查看数据</button>
+      <button class="tab" data-panel="validate">质量验证</button>
+      <button class="tab" data-panel="replay">数据回放</button>
+    </nav>
+
+    <section id="overview" class="panel active">
+      <div class="grid two">
+        <article class="card">
+          <div class="card-heading"><h2>最近数据文件</h2><button id="refreshButton" class="text-button">刷新</button></div>
+          <div class="table-wrap">
+            <table><thead><tr><th>数据流</th><th>UTC 小时</th><th>记录</th><th>大小</th></tr></thead><tbody id="filesTable"></tbody></table>
+          </div>
+        </article>
+        <article class="card terminal-card">
+          <div class="card-heading"><h2>采集日志</h2><span>最近 30 行</span></div>
+          <pre id="logOutput">尚无日志</pre>
+        </article>
+      </div>
+    </section>
+
+    <section id="inspect" class="panel">
+      <article class="card">
+        <div class="card-heading"><div><p class="kicker">READ ONLY</p><h2>Inspect 小时文件</h2></div></div>
+        <form id="inspectForm" class="form-grid">
+          <label>数据流<select name="stream"><option value="trades">Trades</option><option value="orderbook">OrderBook</option></select></label>
+          <label>交易对<input name="symbol" value="ETHUSDT"></label>
+          <label>UTC 日期<input name="date" type="date" required></label>
+          <label>UTC 小时<input name="hour" type="number" min="0" max="23" required></label>
+          <label>样例数量<input name="limit" type="number" min="1" max="200" value="20"></label>
+          <button class="button primary" type="submit">读取文件</button>
+        </form>
+        <pre id="inspectOutput" class="result">选择文件后查看结果</pre>
+      </article>
+    </section>
+
+    <section id="validate" class="panel">
+      <article class="card">
+        <div class="card-heading"><div><p class="kicker">NON-DESTRUCTIVE</p><h2>Validate 日期数据</h2></div><span id="validationBadge" class="badge">等待检查</span></div>
+        <form id="validateForm" class="form-grid compact">
+          <label>交易对<input name="symbol" value="ETHUSDT"></label>
+          <label>UTC 日期<input name="date" type="date" required></label>
+          <button class="button primary" type="submit">开始验证</button>
+        </form>
+        <pre id="validateOutput" class="result">验证不会修改任何 Parquet</pre>
+      </article>
+    </section>
+
+    <section id="replay" class="panel">
+      <article class="card replay-card">
+        <div class="card-heading replay-heading">
+          <div><p class="kicker">MARKET STATE RECONSTRUCTION</p><h2>市场状态回放</h2></div>
+          <div class="replay-status"><span id="replayStatusDot"></span><span id="replayStatus">等待载入</span><span id="replayCount">0 个事件</span></div>
+        </div>
+        <form id="replayForm" class="form-grid replay-form">
+          <label>交易对<input name="symbol" value="ETHUSDT"></label>
+          <label>开始 UTC<input name="start" type="datetime-local" step="1" required></label>
+          <label>结束 UTC<input name="end" type="datetime-local" step="1" required></label>
+          <label>数据流<select name="streams"><option value="trades,orderbook">Trade + Book</option><option value="trades">Trades</option><option value="orderbook">OrderBook</option></select></label>
+          <label>载入速度<select name="speed"><option value="0">最快</option><option value="1">1× 实时</option><option value="10">10×</option><option value="60">60×</option></select></label>
+          <div class="button-row"><button class="button primary" type="submit">载入并播放</button><button id="stopReplay" class="button" type="button">停止</button></div>
+        </form>
+
+        <div class="market-strip" aria-label="当前市场指标">
+          <div><span>事件时间</span><strong id="marketTime">—</strong></div>
+          <div><span>中间价</span><strong id="midPrice">—</strong></div>
+          <div><span>价差</span><strong id="spreadValue">—</strong></div>
+          <div><span>Top 20 失衡</span><strong id="imbalanceValue">—</strong></div>
+          <div><span>最新成交</span><strong id="lastTrade">—</strong></div>
+        </div>
+
+        <div id="replayEmpty" class="replay-empty">
+          <span class="empty-pulse"></span>
+          <strong>选择时段，重建当时的市场</strong>
+          <p>载入后可观察盘口、主动成交和价格轨迹，并逐事件检查状态变化。</p>
+        </div>
+
+        <div id="replayWorkspace" class="replay-workspace" hidden>
+          <section class="market-board">
+            <div class="board-heading"><div><span class="section-label">ORDER BOOK · TOP 10</span><h3>盘口深度</h3></div><span id="bookUpdateId">等待盘口快照</span></div>
+            <div class="book-columns"><span>价格 (USDT)</span><span>数量 (ETH)</span><span>累计</span></div>
+            <div id="asksBook" class="book-side asks"></div>
+            <div class="book-mid"><span>SPREAD</span><strong id="bookSpread">—</strong><small id="bookMid">MID —</small></div>
+            <div id="bidsBook" class="book-side bids"></div>
+          </section>
+
+          <section class="chart-board">
+            <div class="board-heading"><div><span class="section-label">TRADE PATH</span><h3>成交价格轨迹</h3></div><div class="chart-legend"><span class="buy-dot">主动买</span><span class="sell-dot">主动卖</span></div></div>
+            <div class="chart-wrap"><canvas id="priceChart" aria-label="成交价格轨迹"></canvas><div id="chartEmpty">等待成交数据</div></div>
+            <div class="trade-heading"><span class="section-label">RECENT TRADES</span><span>价格</span><span>数量</span><span>时间</span></div>
+            <div id="tradeTape" class="trade-tape"><div class="tape-empty">等待成交</div></div>
+          </section>
+
+          <aside class="event-board">
+            <div class="board-heading"><div><span class="section-label">CURRENT EVENT</span><h3>发生了什么</h3></div><span id="eventSequence">—</span></div>
+            <div id="eventNarrative" class="event-narrative">等待事件</div>
+            <dl id="eventFacts" class="event-facts"></dl>
+            <details class="raw-event"><summary>查看原始事件 JSON</summary><pre id="replayOutput">{}</pre></details>
+          </aside>
+        </div>
+
+        <div id="replayTransport" class="replay-transport" hidden>
+          <div class="transport-buttons">
+            <button id="stepBack" class="transport-button" type="button" aria-label="上一个事件">←</button>
+            <button id="toggleReplay" class="transport-button play" type="button">暂停</button>
+            <button id="stepForward" class="transport-button" type="button" aria-label="下一个事件">→</button>
+          </div>
+          <div class="timeline">
+            <input id="replayTimeline" type="range" min="0" max="0" value="0" aria-label="回放时间轴">
+            <div class="timeline-labels"><span id="timelineStart">—</span><strong id="timelineCurrent">—</strong><span id="timelineEnd">—</span></div>
+          </div>
+          <div class="event-position"><strong id="eventPosition">0 / 0</strong><span>已载入事件</span></div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

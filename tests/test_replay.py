@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 
+import orjson
 import pyarrow as pa
 from conftest import write_rows
 
@@ -61,3 +62,12 @@ def test_speed_delay_and_playback() -> None:
     assert count == 2
     assert sleeps == [1.0]
     assert emitted == [1000, 3000]
+
+
+def test_replay_reads_active_wal(tmp_path: Path) -> None:
+    base = 1_784_664_000_000
+    path = tmp_path / "trades/ETHUSDT/2026-07-21/.20.wal"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(orjson.dumps({"event_time": base, "aggregate_trade_id": 7}) + b"\n")
+    events = list(iter_unified_events(tmp_path, "ETHUSDT", base, base + 1000, {"trades"}))
+    assert [event.payload["aggregate_trade_id"] for event in events] == [7]

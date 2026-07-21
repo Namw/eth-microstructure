@@ -24,7 +24,7 @@ class TradeCollector(BaseCollector):
     rest_url = "https://fapi.binance.com/fapi/v1/aggTrades"
 
     def __init__(self, symbol: str, writer: HourlyParquetWriter) -> None:
-        super().__init__(symbol, "aggTrade")
+        super().__init__(symbol, "aggTrade", route="market")
         self.writer = writer
         self.last_id = writer.max_value()
         self._client = httpx.AsyncClient(timeout=20)

@@ -1,7 +1,7 @@
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Literal
 
 import orjson
 from loguru import logger
@@ -19,11 +19,19 @@ class CollectorStats:
 
 
 class BaseCollector(ABC):
-    websocket_base_url = "wss://fstream.binance.com/ws"
+    websocket_root = "wss://fstream.binance.com"
 
-    def __init__(self, symbol: str, stream: str) -> None:
+    def __init__(
+        self,
+        symbol: str,
+        stream: str,
+        route: Literal["public", "market", "private"],
+        message_timeout_seconds: float = 30.0,
+    ) -> None:
         self.symbol = symbol.upper()
-        self.url = f"{self.websocket_base_url}/{symbol.lower()}@{stream}"
+        self.route = route
+        self.url = f"{self.websocket_root}/{route}/ws/{symbol.lower()}@{stream}"
+        self.message_timeout_seconds = message_timeout_seconds
         self.stats = CollectorStats()
 
     async def run(self) -> None:
@@ -36,11 +44,24 @@ class BaseCollector(ABC):
                 ) as websocket:
                     logger.info("Connected {}", self.url)
                     delay = 1.0
-                    async for raw_message in websocket:
+                    while True:
+                        raw_message = await asyncio.wait_for(
+                            websocket.recv(), timeout=self.message_timeout_seconds
+                        )
                         self.stats.received += 1
                         await self.handle_message(orjson.loads(raw_message))
             except asyncio.CancelledError:
                 raise
+            except TimeoutError:
+                self.stats.reconnects += 1
+                logger.warning(
+                    "No messages from {} for {:.0f}s; reconnecting in {:.1f}s",
+                    self.url,
+                    self.message_timeout_seconds,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 60.0)
             except Exception:
                 self.stats.reconnects += 1
                 logger.exception("Collector disconnected; reconnecting in {:.1f}s", delay)

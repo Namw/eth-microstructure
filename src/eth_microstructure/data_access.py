@@ -1,5 +1,9 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
+
+import orjson
+import pyarrow.parquet as pq
 
 
 def iso_utc(timestamp_ms: int) -> str:
@@ -15,6 +19,30 @@ def parse_utc(value: str) -> int:
 
 def hourly_path(data_dir: Path, stream: str, symbol: str, date: str, hour: int) -> Path:
     return data_dir / stream / symbol.upper() / date / f"{hour:02d}.parquet"
+
+
+def hourly_wal_path(data_dir: Path, stream: str, symbol: str, date: str, hour: int) -> Path:
+    return data_dir / stream / symbol.upper() / date / f".{hour:02d}.wal"
+
+
+def read_hour_rows(
+    data_dir: Path, stream: str, symbol: str, date: str, hour: int
+) -> tuple[list[dict[str, Any]], list[Path]]:
+    """Read a completed hour and/or its active WAL without disturbing the writer."""
+    parquet_path = hourly_path(data_dir, stream, symbol, date, hour)
+    wal_path = hourly_wal_path(data_dir, stream, symbol, date, hour)
+    rows: list[dict[str, Any]] = []
+    sources: list[Path] = []
+    if parquet_path.exists():
+        rows.extend(pq.read_table(parquet_path).to_pylist())
+        sources.append(parquet_path)
+    if wal_path.exists():
+        with wal_path.open("rb") as file:
+            for line in file:
+                if line.endswith(b"\n") and line.strip():
+                    rows.append(orjson.loads(line))
+        sources.append(wal_path)
+    return rows, sources
 
 
 def covered_files(

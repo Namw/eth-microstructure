@@ -3,9 +3,9 @@ from pathlib import Path
 from typing import Any
 
 import orjson
-import pyarrow.parquet as pq
+import pyarrow as pa
 
-from eth_microstructure.data_access import hourly_path, iso_utc
+from eth_microstructure.data_access import hourly_path, iso_utc, read_hour_rows
 
 
 def _range(values: list[int]) -> dict[str, Any]:
@@ -21,18 +21,19 @@ def inspect_file(
     data_dir: Path, stream: str, symbol: str, date: str, hour: int, limit: int
 ) -> dict[str, Any]:
     path = hourly_path(data_dir, stream, symbol, date, hour)
-    if not path.exists():
+    all_rows, sources = read_hour_rows(data_dir, stream, symbol, date, hour)
+    if not sources:
         raise FileNotFoundError(path)
-    table = pq.read_table(path)
-    rows = table.slice(0, max(0, limit)).to_pylist()
+    rows = all_rows[:max(0, limit)]
+    table = pa.Table.from_pylist(all_rows)
     result: dict[str, Any] = {
         "dataset": stream,
         "path": str(path),
-        "file_size": path.stat().st_size,
+        "sources": [str(source) for source in sources],
+        "file_size": sum(source.stat().st_size for source in sources),
         "rows": table.num_rows,
         "schema": str(table.schema),
     }
-    all_rows = table.to_pylist()
     if stream == "trades":
         event_times = [int(row["event_time"]) for row in all_rows]
         trade_times = [int(row["trade_time"]) for row in all_rows]
