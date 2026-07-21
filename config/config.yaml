@@ -1,0 +1,15 @@
+symbol: ETHUSDT
+
+trade_stream:
+  enabled: true
+
+orderbook_stream:
+  enabled: true
+
+rotation: hourly
+output: parquet
+
+storage:
+  data_dir: data
+  # 1 is safest: fsync every record. Raise this only if accepting a small crash-loss window.
+  wal_fsync_every: 1
